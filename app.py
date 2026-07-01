@@ -3,7 +3,7 @@ import csv
 import sys
 import pickle
 import sqlite3
-import shutil  # Added to copy initial baseline data
+import shutil
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -14,32 +14,27 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # --- CLOUD PERSISTENCE CONFIGURATION ---
-# Render allows you to mount a persistent disk at a path like '/data'
 PERSISTENT_DIR = '/data' if os.path.exists('/data') else os.getcwd()
 
-# Dynamically set paths pointing into the persistent directory
 MODELS_DIR = os.path.join(PERSISTENT_DIR, 'models')
 DATABASE_PATH = os.path.join(PERSISTENT_DIR, 'mindshield.db')
 PERSISTENT_DATASET_DIR = os.path.join(PERSISTENT_DIR, 'dataset')
 DATASET_PATH = os.path.join(PERSISTENT_DATASET_DIR, 'dark-patterns-v2.csv')
 
-# Ensure the directories physically exist on the cloud server disk
 os.makedirs(MODELS_DIR, exist_ok=True)
 os.makedirs(PERSISTENT_DATASET_DIR, exist_ok=True)
 
-# Seed the persistent directory with your GitHub CSV if it doesn't exist yet
 REPO_CSV_PATH = os.path.join(os.getcwd(), 'dataset', 'dark-patterns-v2.csv')
 if not os.path.exists(DATASET_PATH) and os.path.exists(REPO_CSV_PATH):
     shutil.copy(REPO_CSV_PATH, DATASET_PATH)
 
-# Use the absolute paths for runtime loading
 VECTORIZER_PATH = os.path.join(MODELS_DIR, 'vectorizer.pkl')
 MODEL_PATH = os.path.join(MODELS_DIR, 'dark_pattern_model.pkl')
 # ----------------------------------------
 
 GLOBAL_VECTORIZER = None
 GLOBAL_MODEL = None
-CONFIDENCE_THRESHOLD = 0.45
+CONFIDENCE_THRESHOLD = 0.45 
 
 
 def init_db():
@@ -81,49 +76,6 @@ def init_db():
     except Exception as e:
         print(f"[-] Database structural mapping error: {e}", file=sys.stderr)
 
-
-@app.route('/api/auth/google', methods=['POST'])
-def auth_google():
-    try:
-        data = request.get_json()
-        google_id = data.get('googleId')
-        email = data.get('email')
-        name = data.get('name')
-        
-        if not google_id or not email:
-            return jsonify({"success": False, "error": "Missing essential profile parameters."}), 400
-            
-        conn = sqlite3.connect(DATABASE_PATH)
-        cursor = conn.cursor()
-        
-        # Check if this user profile already exists in mindshield.db
-        cursor.execute("SELECT id, name, email FROM users WHERE google_id = ?", (google_id,))
-        user = cursor.fetchone()
-        
-        if user:
-            user_id, db_name, db_email = user
-        else:
-            # Drop a new user entry record into the database sequence context
-            cursor.execute(
-                "INSERT INTO users (google_id, email, name) VALUES (?, ?, ?)",
-                (google_id, email, name)
-            )
-            conn.commit()
-            user_id = cursor.lastrowid
-            db_name = name
-            db_email = email
-            
-        conn.close()
-        
-        return jsonify({
-            "success": True,
-            "userId": user_id,
-            "name": db_name,
-            "email": db_email
-        })
-        
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
 
 def log_dark_pattern_encounter(user_id, domain, category, increment=1):
     try:
@@ -170,7 +122,8 @@ def load_pipeline():
             return False
     else:
         print("[!] Model files not found. Training from dataset...")
-        if train_autonomous_model():
+        # FIX 1: Passed custom path mapping configurations down to engine context
+        if train_autonomous_model(csv_path=DATASET_PATH, models_dir=MODELS_DIR):
             return load_pipeline()
         return False
 
@@ -269,7 +222,8 @@ def report_pattern():
                 writer.writerow(['Pattern String', 'Pattern Category'])
                 writer.writerow([text, category])
 
-        if train_autonomous_model():
+        # FIX 2: Passed custom path mapping configurations down to engine context
+        if train_autonomous_model(csv_path=DATASET_PATH, models_dir=MODELS_DIR):
             load_pipeline()
             return jsonify({"message": "Pattern reported and model retrained successfully."})
         else:
