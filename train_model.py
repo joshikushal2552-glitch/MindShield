@@ -5,13 +5,20 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
-def train_autonomous_model():
-    csv_path = os.path.join('dataset', 'dark-patterns-v2.csv')
+
+def train_autonomous_model(csv_path=None, models_dir=None):
+    # Fallback to local defaults if no paths are provided (helps with local testing)
+    if csv_path is None:
+        csv_path = os.path.join('dataset', 'dark-patterns-v2.csv')
+    if models_dir is None:
+        models_dir = 'models'
+        
     if not os.path.exists(csv_path):
         print(f"[-] Dataset not found: {csv_path}")
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
         pd.DataFrame(columns=['Pattern String', 'Pattern Category']).to_csv(csv_path, index=False)
         return False
+        
     print(f"[*] Loading dataset: {csv_path}")
     df = pd.read_csv(csv_path)
     df['Pattern String'] = df['Pattern String'].fillna('').astype(str)
@@ -65,14 +72,17 @@ def train_autonomous_model():
     X_full_vec = vectorizer.fit_transform(X)
     model = LogisticRegression(class_weight='balanced', max_iter=3000, random_state=42)
     model.fit(X_full_vec, y)
-    # Save
-    models_dir = 'models'
+    
+    # CRITICAL FIX: Ensure saving mechanics use the passed cloud models_dir
     os.makedirs(models_dir, exist_ok=True)
-    with open(os.path.join(models_dir, 'vectorizer.pkl'), 'wb') as f:
+    
+    vec_out = os.path.join(models_dir, 'vectorizer.pkl')
+    mod_out = os.path.join(models_dir, 'dark_pattern_model.pkl')
+    
+    with open(vec_out, 'wb') as f:
         pickle.dump(vectorizer, f)
-    with open(os.path.join(models_dir, 'dark_pattern_model.pkl'), 'wb') as f:
+    with open(mod_out, 'wb') as f:
         pickle.dump(model, f)
-    print(f"[+] Model saved to {models_dir}/")
+        
+    print(f"[+] Pipeline successfully saved to {models_dir}")
     return True
-if __name__ == '__main__':
-    train_autonomous_model()
