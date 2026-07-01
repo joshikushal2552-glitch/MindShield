@@ -3,6 +3,7 @@ import csv
 import sys
 import pickle
 import sqlite3
+import shutil  # Added to copy initial baseline data
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -12,16 +13,33 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-MODELS_DIR = 'models'
+# --- CLOUD PERSISTENCE CONFIGURATION ---
+# Render allows you to mount a persistent disk at a path like '/data'
+PERSISTENT_DIR = '/data' if os.path.exists('/data') else os.getcwd()
+
+# Dynamically set paths pointing into the persistent directory
+MODELS_DIR = os.path.join(PERSISTENT_DIR, 'models')
+DATABASE_PATH = os.path.join(PERSISTENT_DIR, 'mindshield.db')
+PERSISTENT_DATASET_DIR = os.path.join(PERSISTENT_DIR, 'dataset')
+DATASET_PATH = os.path.join(PERSISTENT_DATASET_DIR, 'dark-patterns-v2.csv')
+
+# Ensure the directories physically exist on the cloud server disk
+os.makedirs(MODELS_DIR, exist_ok=True)
+os.makedirs(PERSISTENT_DATASET_DIR, exist_ok=True)
+
+# Seed the persistent directory with your GitHub CSV if it doesn't exist yet
+REPO_CSV_PATH = os.path.join(os.getcwd(), 'dataset', 'dark-patterns-v2.csv')
+if not os.path.exists(DATASET_PATH) and os.path.exists(REPO_CSV_PATH):
+    shutil.copy(REPO_CSV_PATH, DATASET_PATH)
+
+# Use the absolute paths for runtime loading
 VECTORIZER_PATH = os.path.join(MODELS_DIR, 'vectorizer.pkl')
 MODEL_PATH = os.path.join(MODELS_DIR, 'dark_pattern_model.pkl')
-DATASET_PATH = os.path.join('dataset', 'dark-patterns-v2.csv')
-DATABASE_PATH = 'mindshield.db'
+# ----------------------------------------
 
 GLOBAL_VECTORIZER = None
 GLOBAL_MODEL = None
-
-CONFIDENCE_THRESHOLD = 0.45  # Only flag patterns above this confidence
+CONFIDENCE_THRESHOLD = 0.45
 
 
 def init_db():
